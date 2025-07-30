@@ -49,8 +49,8 @@ export class DocSuite {
   /* ---------- public API ---------- */
 
   /** Generic entry point – routes to the correct parser by file extension. */
-  static async extract(filePath: string): Promise<ExtractionResult[]> {
-    const ext = DocSuite.#ext(filePath)
+  static async extract(filePath: string, options?: { extension?: string }): Promise<ExtractionResult[]> {
+    const ext = options?.extension ? options.extension.toLowerCase() : DocSuite.#ext(filePath)
     let results: ExtractionResult[]
 
     switch (ext) {
