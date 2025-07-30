@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs/promises';
-import DocSuite, { ExtractionResult } from '../DocSuite';
+import { DocSuite, ExtractionResult } from '../DocSuite';
 
 const testPostProcessors = async () => {
   console.log('\n\n########################################');

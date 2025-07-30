@@ -43,7 +43,7 @@ export type ExtractionResult = {
   error?: string
 }
 
-export default class DocSuite {
+export class DocSuite {
   // Add this as the first private static member
   static #postProcessors = new Map<string, PostProcessorContext>()
   /* ---------- public API ---------- */
