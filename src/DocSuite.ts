@@ -43,13 +43,20 @@ export type ExtractionResult = {
   error?: string
 }
 
+export type PdfExtractionOptions = {
+  imageFormat?: 'native' | 'jpeg' | 'png'
+}
+
 export class DocSuite {
   // Add this as the first private static member
   static #postProcessors = new Map<string, PostProcessorContext>()
   /* ---------- public API ---------- */
 
   /** Generic entry point – routes to the correct parser by file extension. */
-  static async extract(filePath: string, options?: { extension?: string }): Promise<ExtractionResult[]> {
+  static async extract(
+    filePath: string,
+    options?: { extension?: string; pdf?: PdfExtractionOptions }
+  ): Promise<ExtractionResult[]> {
     const ext = options?.extension ? options.extension.toLowerCase() : DocSuite.#ext(filePath)
     let results: ExtractionResult[]
 
@@ -65,7 +72,7 @@ export class DocSuite {
         results = await DocSuite.extractPptx(filePath)
         break
       case '.pdf':
-        results = await DocSuite.extractPdf(filePath)
+        results = await DocSuite.extractPdf(filePath, options?.pdf)
         break
       default:
         results = [
@@ -171,7 +178,8 @@ export class DocSuite {
   }
 
   /** Extract text and images from PDF files (.pdf). */
-  static async extractPdf(filePath: string): Promise<ExtractionResult[]> {
+  static async extractPdf(filePath: string, options: PdfExtractionOptions = {}): Promise<ExtractionResult[]> {
+    const { imageFormat = 'jpeg' } = options // Default to jpeg
     const fileName = path.basename(filePath)
     const poppler = new Poppler()
 
@@ -218,11 +226,25 @@ export class DocSuite {
 
           try {
             const imagePrefix = path.join(tempDir, 'img')
-            await poppler.pdfImages(filePath, imagePrefix, {
+            const imageOptions: any = {
               firstPageToConvert: pageNum,
-              lastPageToConvert: pageNum,
-              pngFile: true // Use PNG for better quality/compatibility
-            })
+              lastPageToConvert: pageNum
+            }
+
+            switch (imageFormat) {
+              case 'native':
+                imageOptions.allFiles = true
+                break
+              case 'png':
+                imageOptions.pngFile = true
+                break
+              case 'jpeg':
+              default:
+                imageOptions.jpegFile = true
+                break
+            }
+
+            await poppler.pdfImages(filePath, imagePrefix, imageOptions)
 
             const files = await fs.readdir(tempDir)
             const imageFiles = files.filter((f) => f.startsWith('img-'))
