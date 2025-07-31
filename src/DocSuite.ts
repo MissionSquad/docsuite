@@ -4,7 +4,7 @@ import mammoth from 'mammoth'
 import * as XLSX from 'xlsx'
 import PptxParser from 'node-pptx-parser'
 import { Poppler } from 'node-poppler'
-import { tmpdir } from 'os'
+import sharp from 'sharp'
 import { randomBytes } from 'crypto'
 
 /**
@@ -209,24 +209,48 @@ export class DocSuite {
 
         // START: New Full-Page Image Logic
         if (fullPageImage) {
-          const tempCairoDir = path.join(tmpdir(), `docsuite-cairo-${randomBytes(8).toString('hex')}`)
-          await fs.mkdir(tempCairoDir, { recursive: true })
+          // Use a stable, non-randomized local temp directory to avoid environmental issues.
+          const localTmpRoot = path.resolve(__dirname, '..', '.tmp');
+          await fs.mkdir(localTmpRoot, { recursive: true });
+          
+          // Use a predictable but unique filename within the stable temp directory.
+          const outputPrefix = path.join(localTmpRoot, `cairo-output-${randomBytes(8).toString('hex')}-p${pageNum}`);
+          
           try {
-            const outputPrefix = path.join(tempCairoDir, `page-${pageNum}`)
             await poppler.pdfToCairo(filePath, outputPrefix, {
               firstPageToConvert: pageNum,
               lastPageToConvert: pageNum,
               jpegFile: true,
+              jpegOptions: 'quality=95,progressive=n,optimize=n',
               resolutionXYAxis: 200,
               scalePageTo: 2160,
-              cropBox: true
+              cropBox: true,
+              singleFile: true,
+              antialias: 'good'
             })
 
-            const jpegPath = `${outputPrefix}.jpg`
-            const imageBuffer = await fs.readFile(jpegPath)
+            const jpegPath = `${outputPrefix}.jpg`;
+            
+            // The external tool might fail silently. We must verify the file was created.
+            try {
+              await fs.access(jpegPath);
+            } catch (e) {
+              throw new Error('pdftocairo failed to create output file.');
+            }
+
+            const imageBuffer = await fs.readFile(jpegPath);
+            await fs.rm(jpegPath, { force: true }); // Clean up immediately
 
             if (imageBuffer.length > 0) {
-              const base64Image = imageBuffer.toString('base64')
+              const reEncodedBuffer = await sharp(imageBuffer)
+                .jpeg({
+                  quality: 90,
+                  progressive: false, // Force baseline JPEG
+                  mozjpeg: true // Use mozjpeg encoder for better compatibility
+                })
+                .toColorspace('srgb') // Force sRGB color space
+                .toBuffer()
+              const base64Image = reEncodedBuffer.toString('base64')
               pageResults.push({
                 type: 'image',
                 fileName,
@@ -236,10 +260,14 @@ export class DocSuite {
               })
             }
           } catch (cairoError) {
-            console.error(`pdfToCairo failed for page ${pageNum}:`, cairoError)
-            // Optionally add an error result here if needed
-          } finally {
-            await fs.rm(tempCairoDir, { recursive: true, force: true })
+            const errorMessage = `pdfToCairo failed for page ${pageNum}. The PDF may be incompatible or the environment may have an issue with the Poppler binary.`;
+            console.error(errorMessage, { originalError: cairoError });
+            pageResults.push({
+              type: null,
+              fileName,
+              page: pageNum,
+              error: errorMessage,
+            });
           }
         }
         // END: New Full-Page Image Logic
@@ -261,11 +289,12 @@ export class DocSuite {
           }
 
           // 2. Extract images from the page
-          const tempDir = path.join(tmpdir(), `docsuite-pdf-${randomBytes(8).toString('hex')}`)
-          await fs.mkdir(tempDir, { recursive: true })
-
+          const localTmpRoot = path.resolve(__dirname, '..', '.tmp');
+          await fs.mkdir(localTmpRoot, { recursive: true });
+          
+          const imagePrefix = path.join(localTmpRoot, `pdf-images-${randomBytes(8).toString('hex')}-p${pageNum}`);
+          
           try {
-            const imagePrefix = path.join(tempDir, 'img')
             const imageOptions: any = {
               firstPageToConvert: pageNum,
               lastPageToConvert: pageNum
@@ -284,14 +313,16 @@ export class DocSuite {
                 break
             }
 
-            await poppler.pdfImages(filePath, imagePrefix, imageOptions)
+            await poppler.pdfImages(filePath, imagePrefix, imageOptions);
 
-            const files = await fs.readdir(tempDir)
-            const imageFiles = files.filter((f) => f.startsWith('img-'))
+            const files = await fs.readdir(localTmpRoot);
+            const imageFiles = files.filter((f) => f.startsWith(path.basename(imagePrefix)));
 
             for (const imageFile of imageFiles) {
-              const imagePath = path.join(tempDir, imageFile)
-              const imageBuffer = await fs.readFile(imagePath)
+              const imagePath = path.join(localTmpRoot, imageFile);
+              const imageBuffer = await fs.readFile(imagePath);
+              await fs.rm(imagePath, { force: true }); // Clean up immediately
+
               if (imageBuffer.length === 0) {
                 console.log({ level: 'warn', msg: `Skipping empty image file extracted from PDF: ${imageFile}` })
                 continue // Skip empty/corrupted files
@@ -325,8 +356,7 @@ export class DocSuite {
               })
             }
           } finally {
-            // Clean up temp directory
-            await fs.rm(tempDir, { recursive: true, force: true })
+            // The individual files are cleaned up as they are processed.
           }
 
           // 3. Handle pages with no content

@@ -1,6 +1,6 @@
 {
   "name": "@missionsquad/docsuite",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "MissionSquad document parsing and text extraction suite",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -25,6 +25,7 @@
     "nanoid": "3.3.10",
     "node-poppler": "^8.0.3",
     "node-pptx-parser": "^1.0.1",
+    "sharp": "^0.34.3",
     "xlsx": "^0.18.5",
     "xlsx-calc": "^0.9.2"
   },

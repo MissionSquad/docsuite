@@ -1,7 +1,13 @@
+# Dependencies
+/node_modules
+
+# Build output
+/lib
+
+/docs
+
+# Temporary files
+.tmp/
+
 .DS_Store
-.env
-node_modules
-lib
-coverage
 tsconfig.tsbuildinfo
-docs
