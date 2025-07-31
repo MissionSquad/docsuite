@@ -222,8 +222,8 @@ export class DocSuite {
               lastPageToConvert: pageNum,
               jpegFile: true,
               jpegOptions: 'quality=95,progressive=n,optimize=n',
-              resolutionXYAxis: 200,
-              scalePageTo: 2160,
+              resolutionXYAxis: 150,
+              scalePageTo: 1080,
               cropBox: true,
               singleFile: true,
               antialias: 'good'
