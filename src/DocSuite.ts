@@ -41,10 +41,12 @@ export type ExtractionResult = {
   page: number // Represents the sheet number, slide number, or page number
   contents?: string
   error?: string
+  isFullPage?: boolean
 }
 
 export type PdfExtractionOptions = {
   imageFormat?: 'native' | 'jpeg' | 'png'
+  fullPageImage?: boolean
 }
 
 export class DocSuite {
@@ -179,7 +181,7 @@ export class DocSuite {
 
   /** Extract text and images from PDF files (.pdf). */
   static async extractPdf(filePath: string, options: PdfExtractionOptions = {}): Promise<ExtractionResult[]> {
-    const { imageFormat = 'jpeg' } = options // Default to jpeg
+    const { imageFormat = 'native', fullPageImage = false } = options // Default to native
     const fileName = path.basename(filePath)
     const poppler = new Poppler()
 
@@ -204,6 +206,46 @@ export class DocSuite {
       // Process each page
       for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
         const pageResults: ExtractionResult[] = []
+
+        // START: New Full-Page Image Logic
+        if (fullPageImage) {
+          const tempCairoDir = path.join(tmpdir(), `docsuite-cairo-${randomBytes(8).toString('hex')}`)
+          await fs.mkdir(tempCairoDir, { recursive: true })
+          try {
+            const outputPrefix = path.join(tempCairoDir, `page-${pageNum}`)
+            await poppler.pdfToCairo(filePath, outputPrefix, {
+              firstPageToConvert: pageNum,
+              lastPageToConvert: pageNum,
+              jpegFile: true,
+              jpegOptions: 'quality=95',
+              antialias: 'good',
+              resolutionXYAxis: 200,
+              scalePageTo: 2160,
+              cropBox: true
+            })
+
+            const jpegPath = `${outputPrefix}.jpg`
+            const imageBuffer = await fs.readFile(jpegPath)
+
+            if (imageBuffer.length > 0) {
+              const base64Image = imageBuffer.toString('base64')
+              pageResults.push({
+                type: 'image',
+                fileName,
+                page: pageNum,
+                contents: `data:image/jpeg;base64,${base64Image}`,
+                isFullPage: true // Signal this is a full-page image
+              })
+            }
+          } catch (cairoError) {
+            console.error(`pdfToCairo failed for page ${pageNum}:`, cairoError)
+            // Optionally add an error result here if needed
+          } finally {
+            await fs.rm(tempCairoDir, { recursive: true, force: true })
+          }
+        }
+        // END: New Full-Page Image Logic
+        
         try {
           // 1. Extract text from the page
           const text = await poppler.pdfToText(filePath, undefined, {
@@ -252,9 +294,30 @@ export class DocSuite {
             for (const imageFile of imageFiles) {
               const imagePath = path.join(tempDir, imageFile)
               const imageBuffer = await fs.readFile(imagePath)
+              if (imageBuffer.length === 0) {
+                console.log({ level: 'warn', msg: `Skipping empty image file extracted from PDF: ${imageFile}` })
+                continue // Skip empty/corrupted files
+              }
               const base64Image = imageBuffer.toString('base64')
-              const imageExtension = path.extname(imageFile).slice(1)
-              const mimeType = imageExtension === 'png' ? 'image/png' : 'image/jpeg' // Assuming jpeg for others
+              const imageExtension = path.extname(imageFile).slice(1).toLowerCase()
+              
+              let mimeType = 'image/jpeg' // Default
+              switch (imageExtension) {
+                case 'png':
+                  mimeType = 'image/png'
+                  break
+                case 'jpg':
+                case 'jpeg':
+                  mimeType = 'image/jpeg'
+                  break
+                case 'tif':
+                case 'tiff':
+                  mimeType = 'image/tiff'
+                  break
+                case 'jp2':
+                  mimeType = 'image/jp2'
+                  break
+              }
 
               pageResults.push({
                 type: 'image',
