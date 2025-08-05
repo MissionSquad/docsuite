@@ -56,6 +56,19 @@ export type ExtractionOptions = {
 }
 
 export class DocSuite {
+  private static popplerAvailable: boolean = false;
+
+  static async checkDependencies(): Promise<void> {
+    try {
+      const { execSync } = require('child_process');
+      execSync('pdftotext -v', { stdio: 'ignore' }); // Check if the command runs
+      this.popplerAvailable = true;
+      console.log('Poppler dependency verified successfully.');
+    } catch (error) {
+      this.popplerAvailable = false;
+      console.warn('Poppler utility not found in system PATH. PDF processing will be disabled.');
+    }
+  }
   // Add this as the first private static member
   static #postProcessors = new Map<string, PostProcessorContext>()
   /* ---------- public API ---------- */
@@ -191,6 +204,14 @@ export class DocSuite {
     options: PdfExtractionOptions = {},
     progressCallback?: (event: { type: string; data: any }) => void
   ): Promise<ExtractionResult[]> {
+    if (!this.popplerAvailable) {
+      return [{
+        type: null,
+        fileName: path.basename(filePath),
+        page: 1,
+        error: 'PDF processing is unavailable because the "poppler" system dependency is not installed.'
+      }];
+    }
     const { imageFormat = 'native', fullPageImage = false } = options // Default to native
     const fileName = path.basename(filePath)
     const poppler = new Poppler()
