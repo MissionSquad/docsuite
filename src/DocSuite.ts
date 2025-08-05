@@ -49,6 +49,12 @@ export type PdfExtractionOptions = {
   fullPageImage?: boolean
 }
 
+export type ExtractionOptions = {
+  extension?: string
+  pdf?: PdfExtractionOptions
+  progressCallback?: (event: { type: string; data: any }) => void
+}
+
 export class DocSuite {
   // Add this as the first private static member
   static #postProcessors = new Map<string, PostProcessorContext>()
@@ -57,7 +63,7 @@ export class DocSuite {
   /** Generic entry point – routes to the correct parser by file extension. */
   static async extract(
     filePath: string,
-    options?: { extension?: string; pdf?: PdfExtractionOptions }
+    options?: ExtractionOptions
   ): Promise<ExtractionResult[]> {
     const ext = options?.extension ? options.extension.toLowerCase() : DocSuite.#ext(filePath)
     let results: ExtractionResult[]
@@ -74,7 +80,7 @@ export class DocSuite {
         results = await DocSuite.extractPptx(filePath)
         break
       case '.pdf':
-        results = await DocSuite.extractPdf(filePath, options?.pdf)
+        results = await DocSuite.extractPdf(filePath, options?.pdf, options?.progressCallback)
         break
       default:
         results = [
@@ -180,7 +186,11 @@ export class DocSuite {
   }
 
   /** Extract text and images from PDF files (.pdf). */
-  static async extractPdf(filePath: string, options: PdfExtractionOptions = {}): Promise<ExtractionResult[]> {
+  static async extractPdf(
+    filePath: string,
+    options: PdfExtractionOptions = {},
+    progressCallback?: (event: { type: string; data: any }) => void
+  ): Promise<ExtractionResult[]> {
     const { imageFormat = 'native', fullPageImage = false } = options // Default to native
     const fileName = path.basename(filePath)
     const poppler = new Poppler()
@@ -205,6 +215,12 @@ export class DocSuite {
 
       // Process each page
       for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+        if (progressCallback) {
+          progressCallback({
+            type: 'embedding_page',
+            data: { currentPage: pageNum, totalPages: pageCount }
+          })
+        }
         const pageResults: ExtractionResult[] = []
 
         // START: New Full-Page Image Logic
