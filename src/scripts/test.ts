@@ -8,7 +8,7 @@ const testPostProcessors = async () => {
   console.log('########################################');
 
   const docsDirectory = path.resolve(__dirname, '..', '..', 'docs');
-  const testFile = 'Research Doc.docx';
+  const testFile = 'Heights Labs China Fentanyl Research.pdf'
   const testFilePath = path.join(docsDirectory, testFile);
 
   // --- Test 1: Simple function post-processor ---
